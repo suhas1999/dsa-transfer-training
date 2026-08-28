@@ -33,10 +33,13 @@ try:
             results.append({'label':case['label'],'passed':passed,'actual':actual,'expected':expected,'error':''})
         except Exception:
             results.append({'label':case['label'],'passed':False,'actual':None,'expected':case['output'],'error':traceback.format_exc(limit=4)})
-    json.dumps({'results':results}, default=str)
+    _judge_payload={'results':results}
 except Exception:
-    json.dumps({'fatal':traceback.format_exc(limit=6)})
+    _judge_payload={'fatal':traceback.format_exc(limit=6)}
+_JUDGE_RESULT=json.dumps(_judge_payload, default=str)
+_JUDGE_RESULT
 `);
+    if(typeof raw!=='string') throw new Error(`Judge returned an unexpected payload type: ${typeof raw}`);
     const parsed=JSON.parse(raw);
     if(parsed.fatal){self.postMessage({error:parsed.fatal,runtime:'Python / Pyodide 0.28.3'});return}
     self.postMessage({results:parsed.results,runtime:'Python / Pyodide 0.28.3'});
