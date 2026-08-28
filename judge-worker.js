@@ -26,9 +26,7 @@ async function getPyodide(){
 self.onmessage=async e=>{
   if(e.data?.type!=='run')return;
   try{
-    self.postMessage({status:'loading'});
     const pyodide=await getPyodide();
-    self.postMessage({status:'running'});
     pyodide.globals.set('USER_CODE',e.data.code);
     pyodide.globals.set('CASES_JSON',JSON.stringify(e.data.cases));
     const raw=await pyodide.runPythonAsync(`
