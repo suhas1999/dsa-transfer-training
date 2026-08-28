@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DSA Transfer Training</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">50-problem transfer curriculum</p>
+        <h1>DSA Transfer Training</h1>
+        <p class="lede">35 disguised foundations + 15 composite problems. Track the reasoning failure, not just the solve.</p>
+      </div>
+      <div class="metrics" id="metrics"></div>
+    </header>
+
+    <section class="toolbar" aria-label="Filters">
+      <select id="kindFilter"><option value="all">All tracks</option><option value="core">Core disguised</option><option value="composite">Composite</option></select>
+      <select id="statusFilter"><option value="all">All statuses</option><option>Unseen</option><option>Attempting</option><option>Solved independently</option><option>Solved with hint</option><option>Reviewed</option></select>
+      <input id="search" type="search" placeholder="Search ID or title" />
+      <button id="randomBtn">Random unsolved</button>
+      <button id="exportBtn" class="secondary">Export progress</button>
+      <a class="fileBtn secondary" href="https://github.com/suhas1999/dsa-transfer-training/edit/main/data/progress.json" target="_blank" rel="noopener">Edit shared progress on GitHub</a>
+      <label class="fileBtn secondary">Import progress<input id="importInput" type="file" accept="application/json" /></label>
+    </section>
+
+    <section class="workspace">
+      <aside id="problemList" class="problem-list" aria-label="Problem list"></aside>
+      <article id="detail" class="detail"></article>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
