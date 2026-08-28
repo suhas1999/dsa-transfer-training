@@ -1,25 +1,11 @@
 let pyodidePromise=null;
-const PYODIDE_SOURCES=[
-  'https://cdn.jsdelivr.net/npm/pyodide@314.0.6/',
-  'https://cdn.jsdelivr.net/pyodide/v314.0.6/full/',
-  'https://unpkg.com/pyodide@314.0.6/'
-];
-
-async function loadFromAnySource(){
-  let lastError=null;
-  for(const base of PYODIDE_SOURCES){
-    try{
-      if(typeof loadPyodide!=='function') importScripts(base+'pyodide.js');
-      return await loadPyodide({indexURL:base});
-    }catch(err){
-      lastError=err;
-    }
-  }
-  throw new Error(`Could not load the Python runtime from any CDN. Last error: ${String(lastError?.message||lastError)}`);
-}
+const PYODIDE_URL='https://cdn.jsdelivr.net/pyodide/v0.28.3/full/';
 
 async function getPyodide(){
-  if(!pyodidePromise) pyodidePromise=loadFromAnySource();
+  if(!pyodidePromise){
+    importScripts(PYODIDE_URL+'pyodide.js');
+    pyodidePromise=loadPyodide({indexURL:PYODIDE_URL});
+  }
   return pyodidePromise;
 }
 
@@ -52,7 +38,7 @@ except Exception:
     json.dumps({'fatal':traceback.format_exc(limit=6)})
 `);
     const parsed=JSON.parse(raw);
-    if(parsed.fatal){self.postMessage({error:parsed.fatal,runtime:'Python / Pyodide'});return}
-    self.postMessage({results:parsed.results,runtime:'Python / Pyodide'});
+    if(parsed.fatal){self.postMessage({error:parsed.fatal,runtime:'Python / Pyodide 0.28.3'});return}
+    self.postMessage({results:parsed.results,runtime:'Python / Pyodide 0.28.3'});
   }catch(err){self.postMessage({error:String(err?.stack||err),runtime:'Judge unavailable'});}
 };
