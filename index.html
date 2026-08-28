@@ -31,6 +31,18 @@
       <article id="detail" class="detail"></article>
     </section>
   </main>
-  <script src="app.js"></script>
+  <script>
+    (() => {
+      const NativeWorker = window.Worker;
+      window.Worker = class extends NativeWorker {
+        constructor(url, options) {
+          const raw = String(url);
+          const finalUrl = raw.includes('judge-worker.js') ? `${raw}${raw.includes('?') ? '&' : '?'}v=8` : raw;
+          super(finalUrl, options);
+        }
+      };
+    })();
+  </script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
