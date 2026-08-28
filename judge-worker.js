@@ -1,16 +1,34 @@
 let pyodidePromise=null;
-const PYODIDE_URL='https://cdn.jsdelivr.net/pyodide/v314.0.6/full/';
-async function getPyodide(){
-  if(!pyodidePromise){
-    importScripts(PYODIDE_URL+'pyodide.js');
-    pyodidePromise=loadPyodide({indexURL:PYODIDE_URL});
+const PYODIDE_SOURCES=[
+  'https://cdn.jsdelivr.net/npm/pyodide@314.0.6/',
+  'https://cdn.jsdelivr.net/pyodide/v314.0.6/full/',
+  'https://unpkg.com/pyodide@314.0.6/'
+];
+
+async function loadFromAnySource(){
+  let lastError=null;
+  for(const base of PYODIDE_SOURCES){
+    try{
+      if(typeof loadPyodide!=='function') importScripts(base+'pyodide.js');
+      return await loadPyodide({indexURL:base});
+    }catch(err){
+      lastError=err;
+    }
   }
+  throw new Error(`Could not load the Python runtime from any CDN. Last error: ${String(lastError?.message||lastError)}`);
+}
+
+async function getPyodide(){
+  if(!pyodidePromise) pyodidePromise=loadFromAnySource();
   return pyodidePromise;
 }
+
 self.onmessage=async e=>{
   if(e.data?.type!=='run')return;
   try{
+    self.postMessage({status:'loading'});
     const pyodide=await getPyodide();
+    self.postMessage({status:'running'});
     pyodide.globals.set('USER_CODE',e.data.code);
     pyodide.globals.set('CASES_JSON',JSON.stringify(e.data.cases));
     const raw=await pyodide.runPythonAsync(`
@@ -36,7 +54,7 @@ except Exception:
     json.dumps({'fatal':traceback.format_exc(limit=6)})
 `);
     const parsed=JSON.parse(raw);
-    if(parsed.fatal){self.postMessage({error:parsed.fatal,runtime:'Python 3.14 / Pyodide'});return}
-    self.postMessage({results:parsed.results,runtime:'Python 3.14 / Pyodide'});
+    if(parsed.fatal){self.postMessage({error:parsed.fatal,runtime:'Python / Pyodide'});return}
+    self.postMessage({results:parsed.results,runtime:'Python / Pyodide'});
   }catch(err){self.postMessage({error:String(err?.stack||err),runtime:'Judge unavailable'});}
 };
