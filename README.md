@@ -1,45 +1,39 @@
 # DSA Transfer Training
 
-A **50-problem interview curriculum** optimized for reasoning transfer rather than problem-count grinding.
+A 50-problem interview curriculum designed for **maximum reasoning transfer per problem**, not problem-count grinding.
 
-- **P01–P35:** disguised foundational problems spanning the major interview primitives.
-- **C01–C15:** composite problems requiring multiple ideas to interact.
-- The dashboard initially shows the problem and constraints; the intended coverage/pivot is behind **Reveal reasoning pivot**.
+- **P01–P35:** disguised foundational problems covering the major interview primitives.
+- **C01–C15:** composite problems combining multiple primitives.
+- Difficulty, track, complexity target, concept labels, and reasoning pivots are **hidden by default** in the site.
 
 ## Training loop
 
-1. Read the problem and constraints only.
+1. Read the problem and examples only.
 2. Attempt from first principles.
-3. Write your reasoning and the **exact impasse**.
-4. Ask ChatGPT for interviewer-style guidance rather than the answer.
-5. After solving/reviewing, record the exact reasoning transition you missed.
-6. Set comfort from 0–4 and revisit weak problems.
+3. Write your model and the **exact impasse**.
+4. Test your implementation against the visible examples.
+5. Run the extra judge tests.
+6. Only then reveal metadata / reasoning pivot if needed.
+7. Record the exact reasoning transition you missed and your comfort score.
 
-## Shared progress
+## Built-in judge
 
-`data/progress.json` is the repository source of truth.
+Every problem has:
 
-The website also keeps a browser-local working copy so you can type freely. Use **Export progress** when you want to sync that state back to GitHub, or edit `data/progress.json` directly. ChatGPT has authorized write access to this repository and can update the shared progress during training sessions.
+- 2 visible LeetCode-style examples.
+- At least 1 additional edge test used by **Run all tests**.
+- A browser Python editor using `def solve(data): ...`.
+- A 10-second worker timeout so an infinite loop does not freeze the page.
+- Related LeetCode links when there is an exact or useful close analogue.
 
-## Files
+Python runs client-side with Pyodide; your code is not sent to a judge server. Since this is a public repository, the extra tests are hidden in the UI rather than cryptographically secret. For exact LeetCode mappings, LeetCode remains the stronger final judge because it has a much larger private test suite.
 
-- `index.html` — dashboard shell
-- `app.js` — tracker behavior
-- `styles.css` — responsive UI
-- `data/problems.json` — all 50 problems plus hidden reasoning metadata
-- `data/progress.json` — shared progress state
-- `.nojekyll` — static GitHub Pages compatibility
+## Progress
+
+`data/progress.json` is the durable shared state. Browser progress/code is also stored locally for convenience. Export `progress.json` and commit it to GitHub periodically; ChatGPT can read/update the same repository when authorized.
 
 ## GitHub Pages
 
-This repository is ready to serve as a static GitHub Pages site. In repository **Settings → Pages**, choose **Deploy from a branch**, select `main` and `/ (root)`, then save.
+Repository → **Settings** → **Pages** → **Deploy from a branch** → `main` → `/ (root)`.
 
-No GitHub token or credential is stored in the site.
-
-## Working with ChatGPT
-
-Use the stable problem ID and your current reasoning, for example:
-
-> `Let's do C06. Here is my reasoning so far: ...`
-
-The desired interaction is **interviewer/debugger mode**: diagnose the impasse first, provide progressively stronger hints only when needed, and then record the missed reasoning transition and comfort level in the shared tracker.
+The site contains no GitHub token or secret.
