@@ -3,8 +3,12 @@ let problems=[], progress={}, selectedId=null;
 const el=id=>document.getElementById(id);
 
 async function boot(){
-  const [pRes,progRes]=await Promise.all([fetch('data/problems.json'),fetch('data/progress.json')]);
-  problems=await pRes.json();
+  const detailUrls=[1,2,3,4,5].map(i=>`data/details-${i}.json`);
+  const [pRes,progRes,...detailRes]=await Promise.all([fetch('data/problems.json'),fetch('data/progress.json'),...detailUrls.map(u=>fetch(u))]);
+  const baseProblems=await pRes.json();
+  const detailRows=(await Promise.all(detailRes.map(r=>r.json()))).flat();
+  const detailMap=Object.fromEntries(detailRows.map(x=>[x.id,x]));
+  problems=baseProblems.map(p=>{const d=detailMap[p.id]||{};const merged={...p,...d};if(d.statement_override)merged.statement=d.statement_override;return merged});
   const repoProgress=await progRes.json();
   const local=loadLocal();
   progress={...repoProgress,...local};
@@ -14,30 +18,89 @@ async function boot(){
 function loadLocal(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}')}catch{return {}}}
 function saveLocal(){localStorage.setItem(STORAGE_KEY,JSON.stringify(progress));renderMetrics();renderList()}
 function bind(){
-  ['kindFilter','statusFilter','search'].forEach(id=>el(id).addEventListener(id==='search'?'input':'change',renderList));
+  ['statusFilter','search'].forEach(id=>el(id).addEventListener(id==='search'?'input':'change',renderList));
   el('randomBtn').addEventListener('click',()=>{const pool=filtered().filter(p=>(progress[p.id]?.status||'Unseen')==='Unseen');const src=pool.length?pool:filtered();if(!src.length)return;selectedId=src[Math.floor(Math.random()*src.length)].id;render();});
   el('exportBtn').addEventListener('click',exportProgress);
   el('importInput').addEventListener('change',importProgress);
 }
-function filtered(){const k=el('kindFilter').value,s=el('statusFilter').value,q=el('search').value.trim().toLowerCase();return problems.filter(p=>(k==='all'||p.kind===k)&&(s==='all'||(progress[p.id]?.status||'Unseen')===s)&&(!q||p.id.toLowerCase().includes(q)||p.title.toLowerCase().includes(q)))}
+function filtered(){const s=el('statusFilter').value,q=el('search').value.trim().toLowerCase();return problems.filter(p=>(s==='all'||(progress[p.id]?.status||'Unseen')===s)&&(!q||p.id.toLowerCase().includes(q)||p.title.toLowerCase().includes(q)))}
 function render(){renderMetrics();renderList();renderDetail()}
 function renderMetrics(){const vals=problems.map(p=>progress[p.id]||{});const attempted=vals.filter(x=>(x.status||'Unseen')!=='Unseen').length,ind=vals.filter(x=>x.status==='Solved independently').length,c3=vals.filter(x=>(+x.comfort||0)>=3).length,avg=vals.reduce((a,x)=>a+(+x.comfort||0),0)/problems.length;el('metrics').innerHTML=metric(`${attempted}/50`,'attempted')+metric(ind,'independent')+metric(c3,'comfort ≥3')+metric(avg.toFixed(1),'avg comfort')}
 function metric(v,l){return `<div class="metric"><b>${v}</b><span>${l}</span></div>`}
-function renderList(){const rows=filtered();el('problemList').innerHTML=rows.length?'':'<div class="empty">No matching problems.</div>';rows.forEach(p=>{const st=progress[p.id]||{};const b=document.createElement('button');b.className='problem-row'+(p.id===selectedId?' active':'');b.innerHTML=`<div class="row-top"><span>${p.id} · ${esc(p.title)}</span><span>${p.difficulty}</span></div><div class="row-meta">${p.kind==='core'?'Core disguised':'Composite'} · ${st.status||'Unseen'} · comfort ${st.comfort||0}/4</div>`;b.addEventListener('click',()=>{selectedId=p.id;render()});el('problemList').appendChild(b)})}
-function renderDetail(){const p=problems.find(x=>x.id===selectedId)||problems[0];if(!p)return;const st=progress[p.id]||(progress[p.id]={status:'Unseen',comfort:0,reasoning:'',impasse:'',missed_transition:'',revisit:'',last_updated:''});const d=el('detail');d.innerHTML=`
-<div class="meta">${p.id} · ${p.kind==='core'?'Core disguised':'Composite'} · ${p.difficulty}</div><h2>${esc(p.title)}</h2>
+function renderList(){
+  const rows=filtered();el('problemList').innerHTML=rows.length?'':'<div class="empty">No matching problems.</div>';
+  rows.forEach(p=>{const st=progress[p.id]||{};const b=document.createElement('button');b.className='problem-row'+(p.id===selectedId?' active':'');b.innerHTML=`<div class="row-top"><span>${p.id} · ${esc(p.title)}</span></div><div class="row-meta">${st.status||'Unseen'} · comfort ${st.comfort||0}/4</div>`;b.addEventListener('click',()=>{selectedId=p.id;render()});el('problemList').appendChild(b)})
+}
+function renderSamples(p){
+  return `<section class="examples"><h3>Examples</h3>${(p.samples||[]).map((s,i)=>`<div class="example"><div class="example-title">Example ${i+1}</div><div class="io"><div><span>Input</span><pre>${esc(JSON.stringify(s.input,null,2))}</pre></div><div><span>Output</span><pre>${esc(JSON.stringify(s.output,null,2))}</pre></div></div>${s.explanation?`<p class="small"><b>Explanation:</b> ${esc(s.explanation)}</p>`:''}</div>`).join('')}</section>`;
+}
+function renderRelated(p){
+  if(!p.related?.length)return '<p class="small">No close LeetCode equivalent was added; use the built-in judge for this custom problem.</p>';
+  return `<div class="related-list">${p.related.map(r=>`<a href="${escAttr(r.url)}" target="_blank" rel="noopener"><strong>${esc(r.title)}</strong><span>${esc(r.relation)}</span></a>`).join('')}</div>`;
+}
+function renderJudge(p,st){
+  const code=st.code||p.starter_code||'def solve(data):\n    pass\n';
+  return `<section id="judgePanel" class="judge-panel hidden">
+    <div class="judge-head"><div><h3>Python judge</h3><p class="small">Runs entirely in your browser. Implement <code>solve(data)</code>; return a JSON-serializable answer.</p></div><span id="runtimeStatus" class="runtime-status">Python loads on first run</span></div>
+    <div class="contract"><b>Input contract</b><p>${esc(p.input_contract||'')}</p>${p.judge_notes?`<p class="small">${esc(p.judge_notes)}</p>`:''}</div>
+    <textarea id="codeEditor" class="code-editor" spellcheck="false">${esc(code)}</textarea>
+    <div class="actions judge-actions"><button id="runExamplesBtn" class="primary">Run examples</button><button id="runAllBtn">Run all tests</button><button id="saveCodeBtn">Save code</button><button id="resetCodeBtn">Reset code</button></div>
+    <div id="judgeResults" class="judge-results" aria-live="polite"></div>
+    <p class="small">“Run all tests” includes extra edge cases not shown in the problem statement. Because this is a public training repo, those tests are obscured by the UI rather than cryptographically hidden. For linked exact LeetCode problems, submit there for LeetCode's larger private test suite.</p>
+  </section>`;
+}
+function renderDetail(){
+  const p=problems.find(x=>x.id===selectedId)||problems[0];if(!p)return;
+  const st=progress[p.id]||(progress[p.id]={status:'Unseen',comfort:0,reasoning:'',impasse:'',missed_transition:'',revisit:'',last_updated:'',code:''});
+  const d=el('detail');d.innerHTML=`
+<div class="problem-id">${p.id}</div><h2>${esc(p.title)}</h2>
 <div class="problem-box"><strong>Problem</strong><p>${esc(p.statement)}</p><div class="small"><b>Constraints:</b> ${esc(p.constraints)}</div></div>
+${renderSamples(p)}
+<div class="disclosure-actions"><button id="metadataBtn">Show metadata</button><button id="relatedBtn">Show related LeetCode</button><button id="judgeBtn">Open Python judge</button></div>
+<div id="metadataArea"></div><div id="relatedArea"></div>
+<div class="progress-divider"><span>Your reasoning log</span></div>
 <div class="grid2"><label class="field">Status<select id="editStatus">${['Unseen','Attempting','Solved independently','Solved with hint','Reviewed'].map(x=>`<option ${x===st.status?'selected':''}>${x}</option>`).join('')}</select></label><label class="field">Comfort<select id="editComfort">${[0,1,2,3,4].map(x=>`<option value="${x}" ${+st.comfort===x?'selected':''}>${x} — ${['blank','fragile','reconstruct slowly','comfortable','transferable'][x]}</option>`).join('')}</select></label></div>
 <label class="field">My reasoning<textarea id="editReasoning" placeholder="Model, brute force, observations, invariants, candidate states...">${esc(st.reasoning||'')}</textarea></label>
-<label class="field">Exact impasse<textarea id="editImpasse" placeholder="What exact reasoning transition could you not derive?">${esc(st.impasse||'')}</textarea></label>
+<label class="field">Exact impasse<textarea id="editImpasse" placeholder="Not 'I was stuck' — what exact reasoning transition could you not derive?">${esc(st.impasse||'')}</textarea></label>
 <label class="field">Where I missed<textarea id="editMissed" placeholder="Fill after review: what move did the correct reasoning make that yours did not?">${esc(st.missed_transition||'')}</textarea></label>
 <div class="grid2"><label class="field">Revisit date<input id="editRevisit" type="date" value="${esc(st.revisit||'')}" /></label><div></div></div>
-<div class="actions"><button class="primary" id="saveBtn">Save in browser</button><button id="pivotBtn">Reveal reasoning pivot</button></div>
-<div id="pivotArea"></div><p class="small">Browser saves are your working copy. Use <b>Export progress</b> and replace <code>data/progress.json</code> on GitHub when you want the shared repository state updated; ChatGPT can also update that file during our sessions.</p>`;
-  el('saveBtn').addEventListener('click',()=>{st.status=el('editStatus').value;st.comfort=+el('editComfort').value;st.reasoning=el('editReasoning').value;st.impasse=el('editImpasse').value;st.missed_transition=el('editMissed').value;st.revisit=el('editRevisit').value;st.last_updated=new Date().toISOString();saveLocal()});
-  el('pivotBtn').addEventListener('click',()=>{const a=el('pivotArea');if(a.innerHTML){a.innerHTML='';el('pivotBtn').textContent='Reveal reasoning pivot'}else{a.innerHTML=`<div class="pivot"><div class="small">INTENDED COVERAGE</div><strong>${esc(p.coverage)}</strong><p>${esc(p.pivot)}</p><div class="small"><b>Target:</b> ${esc(p.target)}</div></div>`;el('pivotBtn').textContent='Hide reasoning pivot'}})
+<div class="actions"><button class="primary" id="saveBtn">Save progress in browser</button><button id="pivotBtn">Reveal reasoning pivot</button><a href="problems/${p.id}.md" target="_blank" rel="noopener">Open problem file</a></div>
+<div id="pivotArea"></div>${renderJudge(p,st)}<p class="small">Export <code>progress.json</code> and commit it to GitHub periodically so the repo remains the shared source of truth.</p>`;
+
+  el('saveBtn').addEventListener('click',()=>saveProgressForm(st));
+  el('metadataBtn').addEventListener('click',()=>toggleMetadata(p));
+  el('relatedBtn').addEventListener('click',()=>toggleRelated(p));
+  el('pivotBtn').addEventListener('click',()=>togglePivot(p));
+  el('judgeBtn').addEventListener('click',()=>toggleJudge(p,st));
 }
+function saveProgressForm(st){st.status=el('editStatus').value;st.comfort=+el('editComfort').value;st.reasoning=el('editReasoning').value;st.impasse=el('editImpasse').value;st.missed_transition=el('editMissed').value;st.revisit=el('editRevisit').value;st.last_updated=new Date().toISOString();saveLocal()}
+function toggleMetadata(p){const a=el('metadataArea'),b=el('metadataBtn');if(a.innerHTML){a.innerHTML='';b.textContent='Show metadata';return}a.innerHTML=`<div class="metadata-card"><div><span>Difficulty</span><b>${esc(p.difficulty)}</b></div><div><span>Track</span><b>${p.kind==='core'?'Core disguised':'Composite'}</b></div><div><span>Target complexity</span><b>${esc(p.target)}</b></div></div>`;b.textContent='Hide metadata'}
+function toggleRelated(p){const a=el('relatedArea'),b=el('relatedBtn');if(a.innerHTML){a.innerHTML='';b.textContent='Show related LeetCode';return}a.innerHTML=`<div class="related-card"><h3>Related judged problems</h3>${renderRelated(p)}</div>`;b.textContent='Hide related LeetCode'}
+function togglePivot(p){const a=el('pivotArea'),b=el('pivotBtn');if(a.innerHTML){a.innerHTML='';b.textContent='Reveal reasoning pivot'}else{a.innerHTML=`<div class="pivot"><div class="small">INTENDED CONCEPT — REVEALED</div><strong>${esc(p.coverage)}</strong><p>${esc(p.pivot)}</p><div class="small"><b>Target:</b> ${esc(p.target)}</div></div>`;b.textContent='Hide reasoning pivot'}}
+function toggleJudge(p,st){const panel=el('judgePanel'),b=el('judgeBtn');panel.classList.toggle('hidden');const open=!panel.classList.contains('hidden');b.textContent=open?'Close Python judge':'Open Python judge';if(open)bindJudge(p,st)}
+function bindJudge(p,st){
+  const editor=el('codeEditor'); if(editor.dataset.bound)return; editor.dataset.bound='1';
+  el('saveCodeBtn').addEventListener('click',()=>{st.code=editor.value;st.last_updated=new Date().toISOString();saveLocal();setJudgeMessage('Code saved in your exported progress state.','info')});
+  el('resetCodeBtn').addEventListener('click',()=>{editor.value=p.starter_code||'';st.code=editor.value;saveLocal();setJudgeMessage('Starter code restored.','info')});
+  el('runExamplesBtn').addEventListener('click',()=>runJudge(p,st,false));
+  el('runAllBtn').addEventListener('click',()=>runJudge(p,st,true));
+}
+function setJudgeMessage(msg,type='info'){const r=el('judgeResults');if(r)r.innerHTML=`<div class="judge-message ${type}">${esc(msg)}</div>`}
+async function runJudge(p,st,all){
+  const code=el('codeEditor').value; st.code=code; saveLocal();
+  const cases=[...(p.samples||[]).map((x,i)=>({input:x.input,output:x.output,label:`Example ${i+1}`}))];
+  if(all)(p.judge_tests||[]).forEach((x,i)=>cases.push({input:x.input,output:x.output,label:`Extra test ${i+1}`}));
+  el('runtimeStatus').textContent='Starting Python…';setJudgeMessage('Running…','info');
+  const worker=new Worker('judge-worker.js');
+  let finished=false;
+  const timeout=setTimeout(()=>{if(finished)return;finished=true;worker.terminate();el('runtimeStatus').textContent='Stopped';setJudgeMessage('Timed out after 10 seconds. Check for an infinite loop or an algorithm too slow for these small tests.','fail')},10000);
+  worker.onmessage=e=>{if(finished)return;finished=true;clearTimeout(timeout);worker.terminate();const payload=e.data;el('runtimeStatus').textContent=payload.runtime||'Python ready';if(payload.error){setJudgeMessage(payload.error,'fail');return}renderJudgeResults(payload.results,all)};
+  worker.onerror=e=>{if(finished)return;finished=true;clearTimeout(timeout);worker.terminate();el('runtimeStatus').textContent='Runtime error';setJudgeMessage(`Judge runtime failed: ${e.message}`,'fail')};
+  worker.postMessage({type:'run',code,cases});
+}
+function renderJudgeResults(results,all){const passed=results.filter(x=>x.passed).length;const total=results.length;const hiddenLabel=all?' (includes extra tests)':'';el('judgeResults').innerHTML=`<div class="judge-summary ${passed===total?'pass':'fail'}"><b>${passed}/${total} passed${hiddenLabel}</b></div>`+results.map(r=>`<div class="test-result ${r.passed?'pass':'fail'}"><div><b>${esc(r.label)}</b><span>${r.passed?'Passed':'Failed'}</span></div>${r.passed?'':`<pre>Expected: ${esc(JSON.stringify(r.expected))}\nReceived: ${esc(JSON.stringify(r.actual))}${r.error?`\nError: ${esc(r.error)}`:''}</pre>`}</div>`).join('')}
 function exportProgress(){const blob=new Blob([JSON.stringify(progress,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='progress.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
 function importProgress(e){const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const incoming=JSON.parse(r.result);progress={...progress,...incoming};saveLocal();render()}catch{alert('Invalid progress JSON')}};r.readAsText(f)}
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
+function escAttr(v){return esc(v).replace(/`/g,'&#096;')}
 boot().catch(err=>{document.body.innerHTML='<main class="shell"><h1>Could not load tracker</h1><p>'+esc(err.message)+'</p></main>'});
